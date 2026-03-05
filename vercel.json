@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "server.js"
+    }
+  ],
+ 
+  "env": {
+    "PORT": "5000",
+    "MONGODB_URI": "mongodb+srv://Vercel-Admin-atlas-cyan-yacht:NdRIXjpEpnwIu9CN@atlas-cyan-yacht.g7nbwaq.mongodb.net/?retryWrites=true&w=majority",
+    "JWT_SECRET": "your_super_secret_jwt_key_change_this_in_production_2024_qr_generator_app",
+    "NODE_ENV": "production"
+  }
+}

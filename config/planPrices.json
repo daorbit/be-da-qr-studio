@@ -1,0 +1,10 @@
+{
+  "basic": {
+    "monthlyPrice": 149,
+    "yearlyPrice": 1700
+  },
+  "pro": {
+    "monthlyPrice": 299,
+    "yearlyPrice": 3500
+  }
+}
