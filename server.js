@@ -32,6 +32,7 @@ app.use(
       "http://localhost:8080",
       "http://localhost:8081",
       "https://qrstudio.daorbit.in/",
+      "https://qrstudio.daorbit.in",
       "https://qr-studio-pro-orpin.vercel.app/",
       "https://lovable.dev",
       "https://lovable.dev/projects/9d155ac2-83d3-4dea-ba6d-bd4dadc5df2f",
