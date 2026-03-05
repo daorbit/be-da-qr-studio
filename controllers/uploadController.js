@@ -5,9 +5,9 @@ import cloudinary from 'cloudinary';
 
 // Configure Cloudinary (use env vars when available, otherwise fallback)
 cloudinary.v2.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dj3xx136b',
-  api_key: process.env.CLOUDINARY_API_KEY || '526198336185966',
-  api_secret: process.env.CLOUDINARY_API_SECRET || 'zIbgT48P52UwvQy-dgc_u8pmrMo',
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dkt6vvcdo',
+  api_key: process.env.CLOUDINARY_API_KEY || '113391793434648',
+  api_secret: process.env.CLOUDINARY_API_SECRET || 'DmYA-JkhOHS-P5Ra4XQUb5x-DtE',
 });
 
 // Helper to extract base64 data and mime type
