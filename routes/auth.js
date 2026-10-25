@@ -6,8 +6,7 @@ import {
   updateTheme, 
   updateProfile, 
   changePassword, 
-  uploadProfilePicture, 
-  googleAuth,
+  uploadProfilePicture,
   forgotPassword,
   resetPassword,
   setPasswordForGoogleUser,
@@ -16,6 +15,11 @@ import {
   verifyEmailOTP,
   verifyResetOTP
 } from '../controllers/authController.js';
+import {
+  startGoogleLogin,
+  googleLoginCallback,
+  getGoogleLoginConfig
+} from '../controllers/googleLoginController.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -26,7 +30,12 @@ const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, ne
 router.post('/signup', signup);
 router.post('/signup-with-verification', signup); // Alternative route name
 router.post('/signin', signin);
-router.post('/google-auth', googleAuth);
+
+// Google sign-in (redirect flow)
+router.get('/google', startGoogleLogin);
+router.get('/google/callback', asyncHandler(googleLoginCallback));
+router.get('/google/config', getGoogleLoginConfig);
+
 router.get('/profile', protect, getProfile);
 router.get('/me', protect, getProfile);
 router.put('/theme', protect, updateTheme);

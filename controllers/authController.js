@@ -1,6 +1,6 @@
 import User from '../models/User.js';
-import Subscription from '../models/Subscription.js';
 import { generateToken } from '../utils/jwt.js';
+import { startTrialForUser } from '../services/trialService.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -96,41 +96,7 @@ export const signup = async (req, res) => {
     });
 
     if (user) {
-      // Create trial subscription for new user with pro features for 3 months
-      const trialStartDate = new Date();
-      const trialEndDate = new Date();
-      trialEndDate.setMonth(trialEndDate.getMonth() + 3); // Add 3 months
-
-      await Subscription.create({
-        userId: user._id,
-        planType: 'trial',  // Use proper trial plan type
-        status: 'active',
-        isTrialSubscription: true,
-        trialStartDate,
-        trialEndDate,
-        startDate: trialStartDate,
-        endDate: trialEndDate,
-        features: {
-          maxQRCodes: -1,        // Unlimited QR codes (above Enterprise)
-          maxScansPerQR: -1,     // Unlimited scans per QR (above Enterprise)
-          analytics: true,
-          advancedAnalytics: true,
-          whiteLabel: true,
-          removeWatermark: true,
-          passwordProtection: true,
-          expirationDate: true,
-          customScanLimit: true
-        }
-      });
-
-      // Update user trial fields
-      user.trialStartDate = trialStartDate;
-      user.trialEndDate = trialEndDate;
-      user.hasUsedTrial = true;
-      user.isOnTrial = true;
-      user.subscriptionPlan = 'trial';  // Set to proper trial plan
-      user.subscriptionStatus = 'active';
-      await user.save();
+      await startTrialForUser(user);
 
       console.log('Created trial subscription for new user:', user._id);
 
@@ -442,126 +408,6 @@ export const changePassword = async (req, res, next) => {
     res.json({ success: true, message: 'Password updated successfully' });
   } catch (error) {
     next(error);
-  }
-};
-
-// @desc    Google OAuth authentication
-// @route   POST /api/auth/google-auth
-// @access  Public
-export const googleAuth = async (req, res) => {
-  try {
-    const { credential } = req.body;
-
-    if (!credential) {
-      return res.status(400).json({ message: 'Google credential is required' });
-    }
-
-    // Decode Google credential (JWT token)
-    // The credential is a JWT with 3 parts: header.payload.signature
-    const payload = JSON.parse(Buffer.from(credential.split('.')[1], 'base64').toString());
-
-    // Verify essential fields
-    if (!payload.email || !payload.sub) {
-      return res.status(400).json({ message: 'Invalid Google credential' });
-    }
-
-    // Check if user exists
-    let user = await User.findOne({ email: payload.email.toLowerCase() });
-
-    if (!user) {
-      // Create new user with Google info
-      user = await User.create({
-        email: payload.email.toLowerCase(),
-        googleId: payload.sub,
-        name: payload.name || payload.email.split('@')[0],
-        picture: payload.picture,
-        isVerified: true, // Google accounts are pre-verified
-        profilePicture: payload.picture, // Store in both fields for consistency
-      });
-
-      // Create trial subscription for new Google user with pro features for 3 months
-      const trialStartDate = new Date();
-      const trialEndDate = new Date();
-      trialEndDate.setMonth(trialEndDate.getMonth() + 3); // Add 3 months
-
-      await Subscription.create({
-        userId: user._id,
-        planType: 'trial',  // Use proper trial plan type
-        status: 'active',
-        isTrialSubscription: true,
-        trialStartDate,
-        trialEndDate,
-        startDate: trialStartDate,
-        endDate: trialEndDate,
-        features: {
-          maxQRCodes: -1,        // Unlimited QR codes (above Enterprise)
-          maxScansPerQR: -1,     // Unlimited scans per QR (above Enterprise)
-          analytics: true,
-          advancedAnalytics: true,
-          whiteLabel: true,
-          removeWatermark: true,
-          passwordProtection: true,
-          expirationDate: true,
-          customScanLimit: true
-        }
-      });
-
-      // Update user trial fields
-      user.trialStartDate = trialStartDate;
-      user.trialEndDate = trialEndDate;
-      user.hasUsedTrial = true;
-      user.isOnTrial = true;
-      user.subscriptionPlan = 'trial';  // Set to proper trial plan
-      user.subscriptionStatus = 'active';
-      await user.save();
-
-      console.log('Created trial subscription for new Google user:', user._id);
-    } else {
-      // User exists - update Google info if not already set
-      if (!user.googleId) {
-        user.googleId = payload.sub;
-        user.name = user.name || payload.name || payload.email.split('@')[0];
-        user.picture = payload.picture;
-        user.isVerified = true;
-        user.profilePicture = user.profilePicture || payload.picture;
-        await user.save();
-      }
-    }
-
-    // Check if user is blocked
-    if (user.blocked) {
-      return res.status(403).json({ message: 'Account is blocked, contact support' });
-    }
-
-    // Return user data with token
-    res.json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      isAdmin: user.isAdmin,
-      theme: user.theme,
-      mobile: user.mobile,
-      country: user.country,
-      city: user.city,
-      profilePicture: user.profilePicture || user.picture,
-      picture: user.picture,
-      language: user.language,
-      timezone: user.timezone,
-      timeFormat: user.timeFormat,
-      removeWatermark: user.removeWatermark,
-      watermarkText: user.watermarkText,
-      whiteLabel: user.whiteLabel,
-      isVerified: user.isVerified,
-      subscriptionPlan: user.subscriptionPlan,
-      subscriptionStatus: user.subscriptionStatus,
-      isOnTrial: user.isOnTrial || false,
-      trialStartDate: user.trialStartDate,
-      trialEndDate: user.trialEndDate,
-      token: generateToken(user._id),
-    });
-  } catch (error) {
-    console.error('Google auth error:', error);
-    res.status(500).json({ message: 'Google authentication failed', error: error.message });
   }
 };
 
