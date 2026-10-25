@@ -1,36 +1,11 @@
-import SibApiV3Sdk from 'sib-api-v3-sdk';
 import crypto from 'crypto';
-import dotenv from 'dotenv';
 import {
   passwordResetOTPTemplate,
   emailVerificationTemplate,
   welcomeEmailTemplate,
-  accountNotificationTemplate,
-  getCurrentDate,
-  getRequestInfo
+  accountNotificationTemplate
 } from './emailTemplates.js';
-
-// Ensure environment variables are loaded
-dotenv.config();
-
-console.log('Email Service - Brevo API Key configured:', process.env.BREVO_API_KEY ? 'Yes' : 'No');
-console.log('Email Service - API Key starts with:', process.env.BREVO_API_KEY ? process.env.BREVO_API_KEY.substring(0, 10) + '...' : 'undefined');
-
-// Check if API key is configured
-if (!process.env.BREVO_API_KEY || process.env.BREVO_API_KEY === 'YOUR_BREVO_API_KEY_HERE') {
-  console.warn('BREVO_API_KEY is not configured. Email sending will fail.');
-}
-
-/**
- * Get a fresh Brevo API client with current API key
- * This ensures the API key is always up-to-date and avoids authentication issues
- * @returns {SibApiV3Sdk.TransactionalEmailsApi} Fresh API client instance
- */
-const getBrevoClient = () => {
-  const client = SibApiV3Sdk.ApiClient.instance;
-  client.authentications['api-key'].apiKey = process.env.BREVO_API_KEY;
-  return new SibApiV3Sdk.TransactionalEmailsApi();
-};
+import { sendMail } from './mailer.js';
 
 // OTP storage (in production, use Redis or database)
 const otpStore = new Map();
@@ -102,88 +77,25 @@ const verifyOTP = (email, userOTP) => {
 };
 
 /**
- * Send OTP via Brevo email
+ * Send OTP via email
  * @param {string} email - Recipient email
  * @param {string} otp - OTP to send
  * @param {string} purpose - Purpose of OTP (verification, reset, etc.)
  * @returns {Promise<object>} Send result
  */
 const sendOTPEmail = async (email, otp, purpose = 'verification') => {
-  try {
-    const apiInstance = getBrevoClient();
-    console.log('Sending OTP email - API Key configured:', !!process.env.BREVO_API_KEY);
-    
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  const subjects = {
+    verification: "QR Studio - Email Verification Code",
+    reset: "QR Studio - Password Reset Code",
+    forgot: "QR Studio - Password Reset Code"
+  };
 
-    // Customize subject and content based on purpose
-    const subjects = {
-      verification: "QR Studio - Email Verification Code",
-      reset: "QR Studio - Password Reset Code",
-      forgot: "QR Studio - Password Reset Code"
-    };
+  const isReset = purpose === 'reset' || purpose === 'forgot';
+  const htmlContent = isReset
+    ? passwordResetOTPTemplate(email, otp)
+    : emailVerificationTemplate(email, otp);
 
-    const titles = {
-      verification: "Email Verification",
-      reset: "Password Reset",
-      forgot: "Password Reset"
-    };
-
-    const messages = {
-      verification: "Please use this code to verify your email address.",
-      reset: "Please use this code to reset your password.",
-      forgot: "Please use this code to reset your password."
-    };
-
-    sendSmtpEmail.subject = subjects[purpose] || subjects.verification;
-    
-    // Use the appropriate template based on purpose
-    let htmlContent;
-    if (purpose === 'verification') {
-      htmlContent = emailVerificationTemplate(email, otp);
-    } else if (purpose === 'reset' || purpose === 'forgot') {
-      htmlContent = passwordResetOTPTemplate(email, otp);
-    } else {
-      htmlContent = emailVerificationTemplate(email, otp);
-    }
-    
-    sendSmtpEmail.htmlContent = htmlContent;
-    sendSmtpEmail.sender = {
-      name: process.env.BREVO_FROM_NAME || 'QR Studio',
-      email: process.env.BREVO_FROM_EMAIL || 'noreply@qrcraftstudio.com'
-    };
-    sendSmtpEmail.to = [{ email: email }];
-    sendSmtpEmail.replyTo = {
-      name: process.env.BREVO_FROM_NAME || 'QR Studio',
-      email: process.env.BREVO_FROM_EMAIL || 'noreply@qrcraftstudio.com'
-    };
-
-    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    return { success: true, messageId: result.messageId };
-
-  } catch (error) {
-    console.error('Error sending OTP email:', error);
-    console.error('Error status:', error?.status);
-    console.error('Error response:', error?.response?.text || error?.text);
-    console.error('API Key configured:', !!process.env.BREVO_API_KEY);
-
-    let errorMessage = 'Failed to send OTP email';
-    if (error.status === 401) {
-      errorMessage = 'Email service authentication failed. Please check API key configuration.';
-    } else if (error.message) {
-      if (error.message.includes('api-key')) {
-        errorMessage = 'Email service not configured. Please check API key.';
-      } else if (error.message.includes('sender')) {
-        errorMessage = 'Sender email not verified. Please verify sender email in Brevo dashboard.';
-      } else {
-        errorMessage = error.message;
-      }
-    }
-
-    return {
-      success: false,
-      error: errorMessage
-    };
-  }
+  return sendMail(email, subjects[purpose] || subjects.verification, htmlContent);
 };
 
 /**
@@ -194,56 +106,15 @@ const sendOTPEmail = async (email, otp, purpose = 'verification') => {
  * @returns {Promise<object>} Send result
  */
 const sendPasswordResetEmail = async (email, resetUrl, userName = '') => {
-  try {
-    const apiInstance = getBrevoClient();
-    console.log('Sending password reset email - API Key configured:', !!process.env.BREVO_API_KEY);
-    
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  const htmlContent = accountNotificationTemplate(
+    userName || 'User',
+    'Reset Your Password',
+    `We received a request to reset your password for your QR Studio account. Click the button below to create a new secure password. This link will expire in 30 minutes for security.`,
+    { url: resetUrl, text: 'Reset My Password' },
+    'warning'
+  );
 
-    sendSmtpEmail.subject = "QR Studio - Password Reset Request";
-    
-    // Create a more advanced password reset template (you could create a new one for links)
-    sendSmtpEmail.htmlContent = accountNotificationTemplate(
-      userName || 'User',
-      'Reset Your Password',
-      `We received a request to reset your password for your QR Studio account. Click the button below to create a new secure password. This link will expire in 30 minutes for security.`,
-      { url: resetUrl, text: 'Reset My Password' },
-      'warning'
-    );
-
-    sendSmtpEmail.sender = {
-      name: process.env.BREVO_FROM_NAME || 'QR Studio',
-      email: process.env.BREVO_FROM_EMAIL || 'noreply@qrcraftstudio.com'
-    };
-    sendSmtpEmail.to = [{ email: email }];
-    sendSmtpEmail.replyTo = {
-      name: process.env.BREVO_FROM_NAME || 'QR Studio',
-      email: process.env.BREVO_FROM_EMAIL || 'noreply@qrcraftstudio.com'
-    };
-
-    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log('Brevo password reset API success:', result);
-    return { success: true, messageId: result.messageId };
-
-  } catch (error) {
-    console.error('Error sending password reset email:', error);
-
-    let errorMessage = 'Failed to send password reset email';
-    if (error.message) {
-      if (error.message.includes('api-key')) {
-        errorMessage = 'Email service not configured. Please check API key.';
-      } else if (error.message.includes('sender')) {
-        errorMessage = 'Sender email not verified. Please verify sender email in Brevo dashboard.';
-      } else {
-        errorMessage = error.message;
-      }
-    }
-
-    return {
-      success: false,
-      error: errorMessage
-    };
-  }
+  return sendMail(email, "QR Studio - Password Reset Request", htmlContent);
 };
 
 /**
@@ -310,36 +181,11 @@ const sendVerificationOTP = async (email, purpose = 'verification') => {
  * @returns {Promise<object>} Send result
  */
 const sendWelcomeEmail = async (email, userName) => {
-  try {
-    const apiInstance = getBrevoClient();
-    console.log('Sending welcome email - API Key configured:', !!process.env.BREVO_API_KEY);
-    
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-
-    sendSmtpEmail.subject = "Welcome to QR Studio - Let's Get Started!";
-    sendSmtpEmail.htmlContent = welcomeEmailTemplate(userName || 'User', email);
-
-    sendSmtpEmail.sender = {
-      name: process.env.BREVO_FROM_NAME || 'QR Studio',
-      email: process.env.BREVO_FROM_EMAIL || 'noreply@qrcraftstudio.com'
-    };
-    sendSmtpEmail.to = [{ email: email }];
-    sendSmtpEmail.replyTo = {
-      name: process.env.BREVO_FROM_NAME || 'QR Studio',
-      email: process.env.BREVO_FROM_EMAIL || 'noreply@qrcraftstudio.com'
-    };
-
-    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log('Brevo welcome email API success:', result);
-    return { success: true, messageId: result.messageId };
-
-  } catch (error) {
-    console.error('Error sending welcome email:', error);
-    return {
-      success: false,
-      error: 'Failed to send welcome email'
-    };
-  }
+  return sendMail(
+    email,
+    "Welcome to QR Studio - Let's Get Started!",
+    welcomeEmailTemplate(userName || 'User', email)
+  );
 };
 
 /**
@@ -353,36 +199,11 @@ const sendWelcomeEmail = async (email, userName) => {
  * @returns {Promise<object>} Send result
  */
 const sendAccountNotification = async (email, userName, title, message, actionButton = null, type = 'info') => {
-  try {
-    const apiInstance = getBrevoClient();
-    console.log('Sending account notification - API Key configured:', !!process.env.BREVO_API_KEY);
-    
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-
-    sendSmtpEmail.subject = `QR Studio - ${title}`;
-    sendSmtpEmail.htmlContent = accountNotificationTemplate(userName, title, message, actionButton, type);
-
-    sendSmtpEmail.sender = {
-      name: process.env.BREVO_FROM_NAME || 'QR Studio',
-      email: process.env.BREVO_FROM_EMAIL || 'noreply@qrcraftstudio.com'
-    };
-    sendSmtpEmail.to = [{ email: email }];
-    sendSmtpEmail.replyTo = {
-      name: process.env.BREVO_FROM_NAME || 'QR Studio',
-      email: process.env.BREVO_FROM_EMAIL || 'noreply@qrcraftstudio.com'
-    };
-
-    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log('Brevo account notification API success:', result);
-    return { success: true, messageId: result.messageId };
-
-  } catch (error) {
-    console.error('Error sending account notification:', error);
-    return {
-      success: false,
-      error: 'Failed to send account notification'
-    };
-  }
+  return sendMail(
+    email,
+    `QR Studio - ${title}`,
+    accountNotificationTemplate(userName, title, message, actionButton, type)
+  );
 };
 
 /**
