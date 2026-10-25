@@ -21,6 +21,7 @@ import {
   googleCredentialLogin,
   getGoogleLoginConfig
 } from '../controllers/googleLoginController.js';
+import { saveOnboarding } from '../controllers/onboardingController.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -41,6 +42,7 @@ router.get('/google/config', getGoogleLoginConfig);
 router.get('/profile', protect, getProfile);
 router.get('/me', protect, getProfile);
 router.put('/theme', protect, updateTheme);
+router.put('/onboarding', protect, asyncHandler(saveOnboarding));
 router.put('/profile', protect, uploadProfilePicture, updateProfile);
 
 // Password management

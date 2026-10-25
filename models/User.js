@@ -97,6 +97,12 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    onboarding: {
+      useCases: { type: [String], default: [] },
+      teamSize: { type: String, default: null },
+      referralSources: { type: [String], default: [] },
+      completedAt: { type: Date, default: null },
+    },
   },
   {
     timestamps: true,
