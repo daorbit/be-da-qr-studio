@@ -1,6 +1,6 @@
 import User from '../models/User.js';
 import { generateToken } from '../utils/jwt.js';
-import { startTrialForUser } from '../services/trialService.js';
+import { serializeUser } from '../utils/serializeUser.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -96,31 +96,8 @@ export const signup = async (req, res) => {
     });
 
     if (user) {
-      await startTrialForUser(user);
-
-      console.log('Created trial subscription for new user:', user._id);
-
       res.status(201).json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        isAdmin: user.isAdmin,
-        theme: user.theme,
-        mobile: user.mobile,
-        country: user.country,
-        city: user.city,
-        profilePicture: user.profilePicture,
-        language: user.language,
-        timezone: user.timezone,
-        timeFormat: user.timeFormat,
-        removeWatermark: user.removeWatermark,
-        watermarkText: user.watermarkText,
-        whiteLabel: user.whiteLabel,
-        subscriptionPlan: 'pro',
-        subscriptionStatus: 'active',
-        isOnTrial: true,
-        trialStartDate: user.trialStartDate,
-        trialEndDate: user.trialEndDate,
+        ...serializeUser(user),
         token: generateToken(user._id),
       });
     } else {
@@ -169,26 +146,7 @@ export const signin = async (req, res) => {
     }
 
     res.json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      isAdmin: user.isAdmin,
-      theme: user.theme,
-      mobile: user.mobile,
-      country: user.country,
-      city: user.city,
-      profilePicture: user.profilePicture,
-      language: user.language,
-      timezone: user.timezone,
-      timeFormat: user.timeFormat,
-      removeWatermark: user.removeWatermark,
-      watermarkText: user.watermarkText,
-      whiteLabel: user.whiteLabel,
-      subscriptionPlan: user.subscriptionPlan,
-      subscriptionStatus: user.subscriptionStatus,
-      isOnTrial: user.isOnTrial || false,
-      trialStartDate: user.trialStartDate,
-      trialEndDate: user.trialEndDate,
+      ...serializeUser(user),
       token: generateToken(user._id),
     });
   } catch (error) {
@@ -201,32 +159,10 @@ export const signin = async (req, res) => {
 // @access  Private
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select('+password');
 
     if (user) {
-      res.json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        isAdmin: user.isAdmin,
-        theme: user.theme,
-        mobile: user.mobile,
-        country: user.country,
-        city: user.city,
-        profilePicture: user.profilePicture,
-        language: user.language,
-        timezone: user.timezone,
-        timeFormat: user.timeFormat,
-        removeWatermark: user.removeWatermark,
-        watermarkText: user.watermarkText,
-        whiteLabel: user.whiteLabel,
-        subscriptionPlan: user.subscriptionPlan,
-        subscriptionStatus: user.subscriptionStatus,
-        isOnTrial: user.isOnTrial || false,
-        trialStartDate: user.trialStartDate,
-        trialEndDate: user.trialEndDate,
-        createdAt: user.createdAt,
-      });
+      res.json(serializeUser(user));
     } else {
       res.status(404).json({ message: 'User not found' });
     }
@@ -240,7 +176,7 @@ export const getProfile = async (req, res) => {
 // @access  Private
 export const updateProfile = async (req, res) => {
   try {
-    const { name, mobile, country, city, language, timezone, timeFormat, removeWatermark, watermarkText, whiteLabel } = req.body;
+    const { name, mobile, country, city, language, timezone, timeFormat } = req.body;
 
     // Validate required fields
     if (!name || name.trim().length === 0) {
@@ -255,25 +191,7 @@ export const updateProfile = async (req, res) => {
       language: language || 'en',
       timezone: timezone || 'UTC',
       timeFormat: timeFormat || '12',
-      removeWatermark: removeWatermark !== undefined ? removeWatermark : undefined,
-      watermarkText: watermarkText ? watermarkText.trim() : undefined,
     };
-
-    // Handle whiteLabel if provided
-    if (whiteLabel) {
-      try {
-        const whiteLabelConfig = typeof whiteLabel === 'string' ? JSON.parse(whiteLabel) : whiteLabel;
-        updateData.whiteLabel = {
-          enabled: whiteLabelConfig.enabled || false,
-          brandName: whiteLabelConfig.brandName ? whiteLabelConfig.brandName.trim() : undefined,
-          primaryColor: whiteLabelConfig.primaryColor || '#6366f1',
-          loadingText: whiteLabelConfig.loadingText ? whiteLabelConfig.loadingText.trim() : undefined,
-          showPoweredBy: whiteLabelConfig.showPoweredBy !== undefined ? whiteLabelConfig.showPoweredBy : true,
-        };
-      } catch (error) {
-        return res.status(400).json({ message: 'Invalid whiteLabel configuration' });
-      }
-    }
 
     // Handle profile picture upload/removal
     if (req.file) {
@@ -316,24 +234,7 @@ export const updateProfile = async (req, res) => {
     if (user) {
       res.json({
         success: true,
-        user: {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          isAdmin: user.isAdmin,
-          theme: user.theme,
-          mobile: user.mobile,
-          country: user.country,
-          city: user.city,
-          profilePicture: user.profilePicture,
-          language: user.language,
-          timezone: user.timezone,
-          timeFormat: user.timeFormat,
-          removeWatermark: user.removeWatermark,
-          watermarkText: user.watermarkText,
-          whiteLabel: user.whiteLabel,
-          createdAt: user.createdAt,
-        },
+        user: serializeUser(user),
       });
     } else {
       res.status(404).json({ success: false, message: 'User not found' });

@@ -18,6 +18,7 @@ import {
 import {
   startGoogleLogin,
   googleLoginCallback,
+  googleCredentialLogin,
   getGoogleLoginConfig
 } from '../controllers/googleLoginController.js';
 import { protect } from '../middleware/auth.js';
@@ -34,6 +35,7 @@ router.post('/signin', signin);
 // Google sign-in (redirect flow)
 router.get('/google', startGoogleLogin);
 router.get('/google/callback', asyncHandler(googleLoginCallback));
+router.post('/google/credential', asyncHandler(googleCredentialLogin));
 router.get('/google/config', getGoogleLoginConfig);
 
 router.get('/profile', protect, getProfile);

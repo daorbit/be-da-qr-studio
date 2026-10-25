@@ -93,60 +93,7 @@ const userSchema = new mongoose.Schema(
       type: Date,
       select: false,
     },
-    removeWatermark: {
-      type: Boolean,
-      default: false,
-    },
-    watermarkText: {
-      type: String,
-      default: 'QR Studio',
-    },
-    whiteLabel: {
-      enabled: {
-        type: Boolean,
-        default: false,
-      },
-      brandName: {
-        type: String,
-        trim: true,
-      },
-      primaryColor: {
-        type: String,
-        default: '#6366f1',
-      },
-      loadingText: {
-        type: String,
-        trim: true,
-      },
-      showPoweredBy: {
-        type: Boolean,
-        default: true,
-      },
-    },
-    subscriptionPlan: {
-      type: String,
-      enum: ['free', 'basic', 'pro', 'enterprise', 'trial'],
-      default: 'free',
-    },
-    subscriptionStatus: {
-      type: String,
-      enum: ['active', 'inactive', 'expired', 'cancelled'],
-      default: 'active',
-    },
-    // Free trial tracking
-    trialStartDate: {
-      type: Date,
-      default: null,
-    },
-    trialEndDate: {
-      type: Date,
-      default: null,
-    },
     hasUsedTrial: {
-      type: Boolean,
-      default: false,
-    },
-    isOnTrial: {
       type: Boolean,
       default: false,
     },

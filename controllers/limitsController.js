@@ -1,47 +1,31 @@
-import Subscription from '../models/Subscription.js';
 import QRCode from '../models/QRCode.js';
-import User from '../models/User.js';
+import { getWorkspacePlan } from '../services/subscriptionService.js';
 
-// Test endpoint to check user's current limits
 export const checkUserLimits = async (req, res) => {
   try {
-    const userId = req.user.id;
-    
-    // Get user data
-    const user = await User.findById(userId);
-    const subscription = await Subscription.findOne({ userId });
-    const qrCodeCount = await QRCode.countDocuments({ user: userId }); // Fix: use 'user' field
-    
-    let currentPlan = 'free';
-    let maxQRCodes = 5;
-    
-    if (subscription && subscription.endDate > new Date()) {
-      currentPlan = subscription.planType;
-      maxQRCodes = subscription.features.maxQRCodes;
-    }
-    
-    const response = {
+    const plan = await getWorkspacePlan(req.workspace._id);
+    const qrCodeCount = await QRCode.countDocuments({ workspace: req.workspace._id });
+    const { maxQRCodes } = plan.features;
+
+    res.status(200).json({
       success: true,
       data: {
-        userId,
-        userName: user?.name,
-        currentPlan,
+        workspaceId: req.workspace._id,
+        workspaceName: req.workspace.name,
+        currentPlan: plan.planType,
         maxQRCodes,
         currentQRCount: qrCodeCount,
         remaining: maxQRCodes === -1 ? 'unlimited' : Math.max(0, maxQRCodes - qrCodeCount),
         canCreateMore: maxQRCodes === -1 || qrCodeCount < maxQRCodes,
-        subscriptionStatus: subscription?.status || 'none',
-        subscriptionEndDate: subscription?.endDate
+        subscriptionStatus: plan.status,
+        subscriptionEndDate: plan.endDate
       }
-    };
-    
-    res.status(200).json(response);
-    
+    });
   } catch (error) {
     console.error('Check limits error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error checking user limits',
+      message: 'Error checking workspace limits',
       error: error.message
     });
   }

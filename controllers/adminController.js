@@ -6,54 +6,10 @@ import AuditLog from '../models/AuditLog.js';
 import { cleanupExpiredOrders, getCleanupStats } from '../utils/cleanupTasks.js';
 import { logAdminAction } from '../utils/auditLogger.js';
 import { loadPlanPrices, savePlanPrices } from './paymentController.js';
-
-// Default plan features
-const DEFAULT_PLAN_FEATURES = {
-  free: {
-    maxQRCodes: 5,
-    maxScansPerQR: 20,
-    analytics: false,
-    advancedAnalytics: false,
-    whiteLabel: false,
-    removeWatermark: false,
-    passwordProtection: false,
-    expirationDate: false,
-    customScanLimit: false
-  },
-  basic: {
-    maxQRCodes: 50,
-    maxScansPerQR: 1000,
-    analytics: true,
-    advancedAnalytics: false,
-    whiteLabel: false,
-    removeWatermark: false,
-    passwordProtection: true,
-    expirationDate: true,
-    customScanLimit: true
-  },
-  pro: {
-    maxQRCodes: 200,
-    maxScansPerQR: 10000,
-    analytics: true,
-    advancedAnalytics: true,
-    whiteLabel: true,
-    removeWatermark: true,
-    passwordProtection: true,
-    expirationDate: true,
-    customScanLimit: true
-  },
-  enterprise: {
-    maxQRCodes: -1, // Unlimited
-    maxScansPerQR: -1, // Unlimited
-    analytics: true,
-    advancedAnalytics: true,
-    whiteLabel: true,
-    removeWatermark: true,
-    passwordProtection: true,
-    expirationDate: true,
-    customScanLimit: true
-  }
-};
+import Workspace from '../models/Workspace.js';
+import { DEFAULT_PLAN_FEATURES } from '../config/planFeatures.js';
+import { deleteWorkspaceCascade, getPrimaryWorkspace } from '../services/workspaceService.js';
+import { planFieldsByOwner } from '../services/adminPlanService.js';
 
 // @desc    Get all users with their full details and created QR codes (admin only)
 // @route   GET /api/admin/users
@@ -92,8 +48,9 @@ export const getAllUsersData = async (req, res) => {
       return acc;
     }, {});
 
+    const planFields = await planFieldsByOwner(userIds);
     const data = users.map((u) => ({
-      user: u,
+      user: { ...u, ...planFields[u._id.toString()] },
       qrcodes: qrsByUser[u._id?.toString()] || [],
     }));
 
@@ -153,11 +110,11 @@ export const deleteUser = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    // Delete user's QR codes
-    await QRCode.deleteMany({ user: userId });
-
-    // Delete user's subscription
-    await Subscription.deleteOne({ userId });
+    const ownedWorkspaces = await Workspace.find({ owner: userId }).distinct('_id');
+    for (const workspaceId of ownedWorkspaces) {
+      await deleteWorkspaceCascade(workspaceId);
+    }
+    await Workspace.updateMany({ 'members.user': userId }, { $pull: { members: { user: userId } } });
 
     await User.findByIdAndDelete(userId);
 
@@ -167,7 +124,7 @@ export const deleteUser = async (req, res) => {
       'USER_DELETED',
       userId,
       user.email,
-      { qrCodesDeleted: true, subscriptionDeleted: true }
+      { workspacesDeleted: ownedWorkspaces.length }
     );
 
     return res.json({ success: true, message: 'User deleted' });
@@ -187,92 +144,35 @@ export const enforceUserLimits = async (req, res) => {
     const issues = [];
     const fixes = [];
     
-    // Get all users
-    const users = await User.find({});
-    
-    for (const user of users) {
-      const subscription = await Subscription.findOne({ userId: user._id });
-      const qrCodes = await QRCode.find({ user: user._id }).sort({ createdAt: 1 }); // Oldest first
-      
-      let maxAllowed = 5; // Default free plan
-      let planType = 'free';
-      
-      if (subscription && subscription.features) {
-        maxAllowed = subscription.features.maxQRCodes;
-        planType = subscription.planType;
-      }
-      
+    const workspaces = await Workspace.find({}).populate('owner', 'email');
+
+    for (const workspace of workspaces) {
+      const subscription = await Subscription.findOne({ workspaceId: workspace._id });
+      const qrCodes = await QRCode.find({ workspace: workspace._id, status: 'active' }).sort({ createdAt: 1 });
+
+      const planType = subscription?.planType || 'free';
+      const maxAllowed = subscription?.features?.maxQRCodes ?? DEFAULT_PLAN_FEATURES.free.maxQRCodes;
+      const label = { workspaceId: workspace._id, workspaceName: workspace.name, email: workspace.owner?.email };
+
       if (maxAllowed !== -1 && qrCodes.length > maxAllowed) {
         const excess = qrCodes.length - maxAllowed;
-        issues.push({
-          userId: user._id,
-          email: user.email,
-          planType,
-          maxAllowed,
-          current: qrCodes.length,
-          excess
-        });
-        
+        issues.push({ ...label, planType, maxAllowed, current: qrCodes.length, excess });
+
         if (!dryRun) {
-          // Keep the newest QR codes, disable the oldest ones
-          const qrCodesToDisable = qrCodes.slice(0, excess);
-          
-          for (const qr of qrCodesToDisable) {
-            qr.isActive = false;
-            await qr.save();
-          }
-          
-          fixes.push({
-            userId: user._id,
-            email: user.email,
-            disabledCount: excess
-          });
-        }
-      }
-      
-      // Ensure user has subscription record
-      if (!subscription) {
-        issues.push({
-          userId: user._id,
-          email: user.email,
-          issue: 'No subscription record',
-          planType: 'missing'
-        });
-        
-        if (!dryRun) {
-          await Subscription.create({
-            userId: user._id,
-            planType: 'free',
-            status: 'active',
-            startDate: new Date(),
-            endDate: null,
-            features: {
-              maxQRCodes: 5,
-              maxScansPerQR: 100,
-              analytics: false,
-              whiteLabel: false,
-              removeWatermark: false
-            }
-          });
-          
-          user.subscriptionPlan = 'free';
-          user.subscriptionStatus = 'active';
-          await user.save();
-          
-          fixes.push({
-            userId: user._id,
-            email: user.email,
-            fix: 'Created free subscription'
-          });
+          await QRCode.updateMany(
+            { _id: { $in: qrCodes.slice(0, excess).map((qr) => qr._id) } },
+            { status: 'inactive' }
+          );
+          fixes.push({ ...label, disabledCount: excess });
         }
       }
     }
-    
+
     const response = {
       success: true,
       dryRun,
       summary: {
-        totalUsers: users.length,
+        totalWorkspaces: workspaces.length,
         usersWithIssues: issues.length,
         fixesApplied: dryRun ? 0 : fixes.length
       },
@@ -293,7 +193,7 @@ export const enforceUserLimits = async (req, res) => {
         null,
         {
           dryRun: false,
-          totalUsers: users.length,
+          totalWorkspaces: workspaces.length,
           usersWithIssues: issues.length,
           fixesApplied: fixes.length
         }
@@ -339,11 +239,12 @@ export const getSystemStats = async (req, res) => {
     
     for (const sub of subscriptions) {
       if (sub.features && sub.features.maxQRCodes !== -1) {
-        const qrCount = await QRCode.countDocuments({ user: sub.userId });
+        const qrCount = await QRCode.countDocuments({ workspace: sub.workspaceId });
         if (qrCount > sub.features.maxQRCodes) {
-          const user = await User.findById(sub.userId);
+          const workspace = await Workspace.findById(sub.workspaceId).populate('owner', 'email');
           usersWithExcess.push({
-            email: user?.email,
+            email: workspace?.owner?.email,
+            workspaceName: workspace?.name,
             planType: sub.planType,
             maxAllowed: sub.features.maxQRCodes,
             current: qrCount,
@@ -418,17 +319,23 @@ export const getSubscriptionsData = async (req, res) => {
           { email: { $regex: search, $options: 'i' } }
         ]
       }).select('_id');
-      subscriptionFilter.userId = { $in: users.map(u => u._id) };
+      const workspaceIds = await Workspace.find({ owner: { $in: users.map(u => u._id) } }).distinct('_id');
+      subscriptionFilter.workspaceId = { $in: workspaceIds };
     }
-    
+
     const totalSubs = await Subscription.countDocuments(subscriptionFilter);
-    const subscriptions = await Subscription.find(subscriptionFilter)
-      .populate('userId', 'name email profilePicture createdAt')
+    const subscriptionDocs = await Subscription.find(subscriptionFilter)
+      .populate({ path: 'workspaceId', select: 'name owner', populate: { path: 'owner', select: 'name email profilePicture createdAt' } })
       .populate('paymentId')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean();
+    const subscriptions = subscriptionDocs.map((sub) => ({
+      ...sub,
+      workspace: sub.workspaceId ? { _id: sub.workspaceId._id, name: sub.workspaceId.name } : null,
+      userId: sub.workspaceId?.owner || null,
+    }));
       
     // Get payments with user details - ONLY show successful payments
     let paymentFilter = { status: 'paid' }; // Only show paid payments
@@ -445,6 +352,7 @@ export const getSubscriptionsData = async (req, res) => {
     const totalPaymentsCount = await Payment.countDocuments(paymentFilter);
     const payments = await Payment.find(paymentFilter)
       .populate('userId', 'name email profilePicture createdAt')
+      .populate('workspaceId', 'name')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -538,62 +446,14 @@ export const refreshUserSubscription = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    const subscription = await Subscription.findOne({ userId });
+    const workspace = await getPrimaryWorkspace(userId);
+    const subscription = workspace && await Subscription.findOne({ workspaceId: workspace._id });
     if (!subscription) {
       return res.status(404).json({ success: false, message: 'Subscription not found' });
     }
-    
-    // Define plan features (same as payment controller)
-    const PLAN_FEATURES = {
-      free: {
-        maxQRCodes: 5,
-        maxScansPerQR: 100,
-        analytics: false,
-        advancedAnalytics: false,
-        whiteLabel: false,
-        removeWatermark: false,
-        passwordProtection: false,
-        expirationDate: false,
-        customScanLimit: false
-      },
-      basic: {
-        maxQRCodes: 50,
-        maxScansPerQR: 1000,
-        analytics: true,
-        advancedAnalytics: false,
-        whiteLabel: false,
-        removeWatermark: false,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      },
-      pro: {
-        maxQRCodes: 200,
-        maxScansPerQR: 10000,
-        analytics: true,
-        advancedAnalytics: true,
-        whiteLabel: true,
-        removeWatermark: true,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      },
-      enterprise: {
-        maxQRCodes: -1,
-        maxScansPerQR: -1,
-        analytics: true,
-        advancedAnalytics: true,
-        whiteLabel: true,
-        removeWatermark: true,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      }
-    };
-    
-    // Update subscription features
+
     const oldFeatures = subscription.features;
-    subscription.features = PLAN_FEATURES[subscription.planType] || PLAN_FEATURES.free;
+    subscription.features = DEFAULT_PLAN_FEATURES[subscription.planType] || DEFAULT_PLAN_FEATURES.free;
     await subscription.save();
     
     // Log the action
@@ -671,60 +531,19 @@ export const updateUserSubscription = async (req, res) => {
       }
     }
 
-    // Default plan features
-    const DEFAULT_PLAN_FEATURES = {
-      free: {
-        maxQRCodes: 5,
-        maxScansPerQR: 20,
-        analytics: false,
-        advancedAnalytics: false,
-        whiteLabel: false,
-        removeWatermark: false,
-        passwordProtection: false,
-        expirationDate: false,
-        customScanLimit: false
-      },
-      basic: {
-        maxQRCodes: 50,
-        maxScansPerQR: 1000,
-        analytics: true,
-        advancedAnalytics: false,
-        whiteLabel: false,
-        removeWatermark: false,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      },
-      pro: {
-        maxQRCodes: 200,
-        maxScansPerQR: 10000,
-        analytics: true,
-        advancedAnalytics: true,
-        whiteLabel: true,
-        removeWatermark: true,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      },
-      enterprise: {
-        maxQRCodes: -1, // Unlimited
-        maxScansPerQR: -1, // Unlimited
-        analytics: true,
-        advancedAnalytics: true,
-        whiteLabel: true,
-        removeWatermark: true,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      }
-    };
+    const workspace = await getPrimaryWorkspace(userId);
+    if (!workspace) {
+      return res.status(404).json({
+        success: false,
+        message: 'This user does not own a workspace yet'
+      });
+    }
 
-    // Get plan features
     const planFeatures = customFeatures || DEFAULT_PLAN_FEATURES[planType];
+    const previousPlan = (await planFieldsByOwner([user._id]))[user._id.toString()].subscriptionPlan;
 
-    // Find or create subscription
-    let subscription = await Subscription.findOne({ userId });
-    
+    let subscription = await Subscription.findOne({ workspaceId: workspace._id });
+
     if (subscription) {
       // Update existing subscription
       subscription.planType = planType;
@@ -743,7 +562,7 @@ export const updateUserSubscription = async (req, res) => {
     } else {
       // Create new subscription
       subscription = await Subscription.create({
-        userId,
+        workspaceId: workspace._id,
         planType,
         status: 'active',
         features: planFeatures,
@@ -754,21 +573,16 @@ export const updateUserSubscription = async (req, res) => {
       });
     }
 
-    // Update user record
-    user.subscriptionPlan = planType;
-    user.subscriptionStatus = 'active';
-    user.isOnTrial = false; // Admin changes override trial status
-    await user.save();
-
-    // Return updated user and subscription data
     const updatedUserData = {
       user: {
         _id: user._id,
         name: user.name,
         email: user.email,
-        subscriptionPlan: user.subscriptionPlan,
-        subscriptionStatus: user.subscriptionStatus,
-        isOnTrial: user.isOnTrial
+        subscriptionPlan: planType,
+        subscriptionStatus: 'active',
+        isOnTrial: false,
+        workspaceId: workspace._id,
+        workspaceName: workspace.name
       },
       subscription: {
         planType: subscription.planType,
@@ -788,7 +602,8 @@ export const updateUserSubscription = async (req, res) => {
       userId,
       user.email,
       {
-        previousPlan: user.subscriptionPlan,
+        workspaceId: workspace._id,
+        previousPlan,
         newPlan: planType,
         endDate: subscriptionEndDate,
         customFeatures: !!customFeatures
@@ -819,7 +634,7 @@ export const getUserSubscription = async (req, res) => {
     const { userId } = req.params;
 
     // Find user
-    const user = await User.findById(userId).select('name email subscriptionPlan subscriptionStatus isOnTrial trialStartDate trialEndDate');
+    const user = await User.findById(userId).select('name email');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -827,19 +642,16 @@ export const getUserSubscription = async (req, res) => {
       });
     }
 
-    // Find subscription
-    const subscription = await Subscription.findOne({ userId });
-    
+    const planFields = (await planFieldsByOwner([user._id]))[user._id.toString()];
+    const subscription = planFields.workspaceId && await Subscription.findOne({ workspaceId: planFields.workspaceId });
+
     const responseData = {
       user: {
         _id: user._id,
         name: user.name,
         email: user.email,
-        subscriptionPlan: user.subscriptionPlan,
-        subscriptionStatus: user.subscriptionStatus,
-        isOnTrial: user.isOnTrial,
-        trialStartDate: user.trialStartDate,
-        trialEndDate: user.trialEndDate
+        ...planFields,
+        trialStartDate: subscription?.trialStartDate || null
       },
       subscription: subscription ? {
         planType: subscription.planType,

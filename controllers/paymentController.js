@@ -5,8 +5,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import Payment from '../models/Payment.js';
 import Subscription from '../models/Subscription.js';
-import User from '../models/User.js';
 import PlanPrices from '../models/PlanPrices.js';
+import { DEFAULT_PLAN_FEATURES } from '../config/planFeatures.js';
+import { getWorkspacePlan } from '../services/subscriptionService.js';
 import InvoiceGenerator from '../utils/invoiceGenerator.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -113,65 +114,25 @@ const getAllPlans = async () => {
       name: 'Basic Plan',
       monthlyPrice: prices.basic.monthlyPrice,
       yearlyPrice: prices.basic.yearlyPrice,
-      features: {
-        maxQRCodes: 50,
-        maxScansPerQR: 1000,
-        analytics: true,
-        advancedAnalytics: false,
-        whiteLabel: false,
-        removeWatermark: false,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      }
+      features: DEFAULT_PLAN_FEATURES.basic
     },
     pro: {
-      name: 'Pro Plan', 
+      name: 'Pro Plan',
       monthlyPrice: prices.pro.monthlyPrice,
       yearlyPrice: prices.pro.yearlyPrice,
-      features: {
-        maxQRCodes: 200,
-        maxScansPerQR: 10000,
-        analytics: true,
-        advancedAnalytics: true,
-        whiteLabel: true,
-        removeWatermark: true,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      }
+      features: DEFAULT_PLAN_FEATURES.pro
     },
     enterprise: {
       name: 'Enterprise Plan',
-      monthlyPrice: 0, // Contact support
-      yearlyPrice: 0, // Contact support
-      features: {
-        maxQRCodes: -1, // Unlimited
-        maxScansPerQR: -1, // Unlimited
-        analytics: true,
-        advancedAnalytics: true,
-        whiteLabel: true,
-        removeWatermark: true,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      }
+      monthlyPrice: 0,
+      yearlyPrice: 0,
+      features: DEFAULT_PLAN_FEATURES.enterprise
     },
     trial: {
       name: 'Trial Plan',
-      monthlyPrice: 0, // Free trial
-      yearlyPrice: 0, // Free trial
-      features: {
-        maxQRCodes: -1, // Unlimited
-        maxScansPerQR: -1, // Unlimited
-        analytics: true,
-        advancedAnalytics: true,
-        whiteLabel: true,
-        removeWatermark: true,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      }
+      monthlyPrice: 0,
+      yearlyPrice: 0,
+      features: DEFAULT_PLAN_FEATURES.trial
     }
   };
 };
@@ -198,6 +159,7 @@ export const createOrder = async (req, res) => {
   try {
     const { planType, duration = 1 } = req.body; // duration in months
     const userId = req.user.id;
+    const workspaceId = req.workspace._id.toString();
 
     const PLANS = await getAllPlans();
     if (!PLANS[planType]) {
@@ -226,10 +188,8 @@ export const createOrder = async (req, res) => {
     
     const amount = price * 100; // Amount in paise
     const currency = 'INR';
-    // Create a short receipt (max 40 chars) using user ID substring and short timestamp
-    const shortUserId = userId.slice(-8); // Last 8 chars of userId
-    const shortTimestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
-    const receipt = `ord_${shortUserId}_${shortTimestamp}`;
+    const shortTimestamp = Date.now().toString().slice(-8);
+    const receipt = `ord_${workspaceId.slice(-8)}_${shortTimestamp}`;
 
     const options = {
       amount,
@@ -237,6 +197,7 @@ export const createOrder = async (req, res) => {
       receipt,
       notes: {
         userId,
+        workspaceId,
         planType,
         duration
       }
@@ -249,6 +210,7 @@ export const createOrder = async (req, res) => {
     // Save payment record
     const payment = new Payment({
       userId,
+      workspaceId,
       orderId: order.id,
       amount: amount / 100, // Store in rupees
       currency,
@@ -287,14 +249,13 @@ export const createOrder = async (req, res) => {
 export const verifyPayment = async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-    const userId = req.user.id;
+    const workspaceId = req.workspace._id;
 
     const PLANS = await getAllPlans();
 
-    // Find the payment record
-    const payment = await Payment.findOne({ 
+    const payment = await Payment.findOne({
       orderId: razorpay_order_id,
-      userId 
+      workspaceId
     });
 
     if (!payment) {
@@ -333,12 +294,11 @@ export const verifyPayment = async (req, res) => {
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + payment.planDuration);
 
-    let subscription = await Subscription.findOne({ userId });
-    
+    let subscription = await Subscription.findOne({ workspaceId });
+
     if (!subscription) {
-      // Create new subscription
       subscription = new Subscription({
-        userId,
+        workspaceId,
         planType: payment.planType,
         startDate: new Date(),
         endDate,
@@ -360,16 +320,6 @@ export const verifyPayment = async (req, res) => {
     }
 
     await subscription.save();
-
-    // Update user's subscription status and clear trial fields
-    await User.findByIdAndUpdate(userId, {
-      subscriptionPlan: payment.planType,
-      subscriptionStatus: 'active',
-      // Clear trial fields when upgrading to paid plan
-      isOnTrial: false,
-      trialStartDate: null,
-      trialEndDate: null
-    });
 
     res.status(200).json({
       success: true,
@@ -394,50 +344,14 @@ export const verifyPayment = async (req, res) => {
 // Get user's current subscription
 export const getSubscription = async (req, res) => {
   try {
-    const userId = req.user.id;
-    
-    const subscription = await Subscription.findOne({ userId })
+    const workspaceId = req.workspace._id;
+    const plan = await getWorkspacePlan(workspaceId);
+
+    const subscription = await Subscription.findOne({ workspaceId })
       .populate('paymentId', 'amount createdAt paidAt');
 
     if (!subscription) {
-      // Return free plan details
-      return res.status(200).json({
-        success: true,
-        subscription: {
-          planType: 'free',
-          status: 'active',
-          endDate: null,
-          features: {
-            maxQRCodes: 5,
-            maxScansPerQR: 100,
-            customDomains: false,
-            analytics: false,
-            apiAccess: false,
-            prioritySupport: false
-          }
-        }
-      });
-    }
-
-    // Check if subscription is expired
-    if (subscription.endDate < new Date() && subscription.planType !== 'free') {
-      subscription.status = 'expired';
-      subscription.planType = 'free';
-      subscription.features = {
-        maxQRCodes: 5,
-        maxScansPerQR: 100,
-        customDomains: false,
-        analytics: false,
-        apiAccess: false,
-        prioritySupport: false
-      };
-      await subscription.save();
-
-      // Update user's subscription status
-      await User.findByIdAndUpdate(userId, {
-        subscriptionPlan: 'free',
-        subscriptionStatus: 'expired'
-      });
+      return res.status(200).json({ success: true, subscription: plan });
     }
 
     res.status(200).json({
@@ -458,21 +372,20 @@ export const getSubscription = async (req, res) => {
 // Get payment history
 export const getPaymentHistory = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const workspaceId = req.workspace._id;
     const { page = 1, limit = 10 } = req.query;
 
-    // Only show successful payments and failed payments, not pending ones
-    const payments = await Payment.find({ 
-      userId, 
-      status: { $in: ['paid', 'failed', 'refunded'] } 
+    const payments = await Payment.find({
+      workspaceId,
+      status: { $in: ['paid', 'failed', 'refunded'] }
     })
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
-    const total = await Payment.countDocuments({ 
-      userId, 
-      status: { $in: ['paid', 'failed', 'refunded'] } 
+    const total = await Payment.countDocuments({
+      workspaceId,
+      status: { $in: ['paid', 'failed', 'refunded'] }
     });
 
     res.status(200).json({
@@ -499,10 +412,8 @@ export const getPaymentHistory = async (req, res) => {
 // Cancel subscription
 export const cancelSubscription = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const subscription = await Subscription.findOne({ workspaceId: req.workspace._id });
 
-    const subscription = await Subscription.findOne({ userId });
-    
     if (!subscription || subscription.planType === 'free') {
       return res.status(400).json({
         success: false,
@@ -512,11 +423,6 @@ export const cancelSubscription = async (req, res) => {
 
     subscription.status = 'cancelled';
     await subscription.save();
-
-    // Update user's subscription status
-    await User.findByIdAndUpdate(userId, {
-      subscriptionStatus: 'cancelled'
-    });
 
     res.status(200).json({
       success: true,
@@ -537,10 +443,8 @@ export const cancelSubscription = async (req, res) => {
 // Refresh subscription features
 export const refreshSubscription = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const subscription = await Subscription.findOne({ workspaceId: req.workspace._id });
 
-    const subscription = await Subscription.findOne({ userId });
-    
     if (!subscription) {
       return res.status(404).json({
         success: false,
@@ -551,17 +455,7 @@ export const refreshSubscription = async (req, res) => {
     // Load current plans and update subscription features accordingly
     const PLANS = await getAllPlans();
 
-    subscription.features = (PLANS && PLANS[subscription.planType]?.features) || {
-      maxQRCodes: 5,
-      maxScansPerQR: 100,
-      analytics: false,
-      advancedAnalytics: false,
-      whiteLabel: false,
-      removeWatermark: false,
-      passwordProtection: false,
-      expirationDate: false,
-      customScanLimit: false,
-    };
+    subscription.features = PLANS[subscription.planType]?.features || DEFAULT_PLAN_FEATURES.free;
 
     await subscription.save();
 
@@ -601,8 +495,7 @@ export const downloadInvoice = async (req, res) => {
     });
   }
 
-  // Check if payment belongs to the authenticated user
-  if (payment.userId._id.toString() !== req.user._id.toString()) {
+  if (payment.workspaceId?.toString() !== req.workspace._id.toString()) {
     return res.status(403).json({
       success: false,
       message: 'Access denied'

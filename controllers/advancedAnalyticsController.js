@@ -1,5 +1,6 @@
 import Scan from '../models/Scan.js';
 import QRCode from '../models/QRCode.js';
+import { belongsToWorkspace } from '../middleware/workspace.js';
 
 // @desc    Get all advanced analytics in one call
 // @route   GET /api/scans/analytics/advanced/:id?
@@ -11,12 +12,12 @@ export const getAllAdvancedAnalytics = async (req, res) => {
 
     if (qrCodeId) {
       const qrCode = await QRCode.findById(qrCodeId);
-      if (!qrCode || qrCode.user.toString() !== req.user._id.toString()) {
+      if (!qrCode || !belongsToWorkspace(qrCode, req)) {
         return res.status(404).json({ success: false, message: 'QR code not found' });
       }
       query = { qrCode: qrCodeId };
     } else {
-      const qrCodes = await QRCode.find({ user: req.user._id }).select('_id');
+      const qrCodes = await QRCode.find({ workspace: req.workspace._id }).select('_id');
       const qrCodeIds = qrCodes.map(qr => qr._id);
       query = { qrCode: { $in: qrCodeIds } };
     }
@@ -258,13 +259,13 @@ export const getHeatmapData = async (req, res) => {
     if (qrCodeId) {
       // Specific QR code
       const qrCode = await QRCode.findById(qrCodeId);
-      if (!qrCode || qrCode.user.toString() !== req.user._id.toString()) {
+      if (!qrCode || !belongsToWorkspace(qrCode, req)) {
         return res.status(404).json({ success: false, message: 'QR code not found' });
       }
       query = { qrCode: qrCodeId };
     } else {
       // All user's QR codes
-      const qrCodes = await QRCode.find({ user: req.user._id }).select('_id');
+      const qrCodes = await QRCode.find({ workspace: req.workspace._id }).select('_id');
       const qrCodeIds = qrCodes.map(qr => qr._id);
       query = { qrCode: { $in: qrCodeIds } };
     }
@@ -332,12 +333,12 @@ export const getPeakTimes = async (req, res) => {
 
     if (qrCodeId) {
       const qrCode = await QRCode.findById(qrCodeId);
-      if (!qrCode || qrCode.user.toString() !== req.user._id.toString()) {
+      if (!qrCode || !belongsToWorkspace(qrCode, req)) {
         return res.status(404).json({ success: false, message: 'QR code not found' });
       }
       query = { qrCode: qrCodeId };
     } else {
-      const qrCodes = await QRCode.find({ user: req.user._id }).select('_id');
+      const qrCodes = await QRCode.find({ workspace: req.workspace._id }).select('_id');
       const qrCodeIds = qrCodes.map(qr => qr._id);
       query = { qrCode: { $in: qrCodeIds } };
     }
@@ -422,12 +423,12 @@ export const getRetentionAnalysis = async (req, res) => {
 
     if (qrCodeId) {
       const qrCode = await QRCode.findById(qrCodeId);
-      if (!qrCode || qrCode.user.toString() !== req.user._id.toString()) {
+      if (!qrCode || !belongsToWorkspace(qrCode, req)) {
         return res.status(404).json({ success: false, message: 'QR code not found' });
       }
       query = { qrCode: qrCodeId };
     } else {
-      const qrCodes = await QRCode.find({ user: req.user._id }).select('_id');
+      const qrCodes = await QRCode.find({ workspace: req.workspace._id }).select('_id');
       const qrCodeIds = qrCodes.map(qr => qr._id);
       query = { qrCode: { $in: qrCodeIds } };
     }
@@ -519,12 +520,12 @@ export const getReferrerAnalysis = async (req, res) => {
 
     if (qrCodeId) {
       const qrCode = await QRCode.findById(qrCodeId);
-      if (!qrCode || qrCode.user.toString() !== req.user._id.toString()) {
+      if (!qrCode || !belongsToWorkspace(qrCode, req)) {
         return res.status(404).json({ success: false, message: 'QR code not found' });
       }
       query = { qrCode: qrCodeId };
     } else {
-      const qrCodes = await QRCode.find({ user: req.user._id }).select('_id');
+      const qrCodes = await QRCode.find({ workspace: req.workspace._id }).select('_id');
       const qrCodeIds = qrCodes.map(qr => qr._id);
       query = { qrCode: { $in: qrCodeIds } };
     }

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import Payment from '../models/Payment.js';
 import Subscription from '../models/Subscription.js';
-import User from '../models/User.js';
+import { DEFAULT_PLAN_FEATURES } from '../config/planFeatures.js';
 
 // Razorpay webhook signature verification
 const verifyWebhookSignature = (body, signature, secret) => {
@@ -154,83 +154,39 @@ const handleOrderPaid = async (order) => {
   }
 };
 
-// Update user subscription based on payment
 const updateUserSubscription = async (paymentRecord) => {
   try {
-    const { userId, planType, planDuration } = paymentRecord;
-    
-    // Plan features mapping
-    const PLAN_FEATURES = {
-      basic: {
-        maxQRCodes: 50,
-        maxScansPerQR: 1000,
-        analytics: true,
-        advancedAnalytics: false,
-        whiteLabel: false,
-        removeWatermark: false,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      },
-      pro: {
-        maxQRCodes: 200,
-        maxScansPerQR: 10000,
-        analytics: true,
-        advancedAnalytics: true,
-        whiteLabel: true,
-        removeWatermark: true,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      },
-      enterprise: {
-        maxQRCodes: -1,
-        maxScansPerQR: -1,
-        analytics: true,
-        advancedAnalytics: true,
-        whiteLabel: true,
-        removeWatermark: true,
-        passwordProtection: true,
-        expirationDate: true,
-        customScanLimit: true
-      }
-    };
+    const { workspaceId, planType, planDuration } = paymentRecord;
 
-    // Calculate end date
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + planDuration);
 
-    // Find existing subscription or create new one
-    let subscription = await Subscription.findOne({ userId });
-    
+    let subscription = await Subscription.findOne({ workspaceId });
+
     if (!subscription) {
       subscription = new Subscription({
-        userId,
+        workspaceId,
         planType,
         startDate: new Date(),
         endDate,
         paymentId: paymentRecord._id,
-        features: PLAN_FEATURES[planType]
+        features: DEFAULT_PLAN_FEATURES[planType]
       });
     } else {
-      // Update existing subscription
       subscription.planType = planType;
       subscription.status = 'active';
       subscription.endDate = endDate;
       subscription.paymentId = paymentRecord._id;
-      subscription.features = PLAN_FEATURES[planType];
+      subscription.features = DEFAULT_PLAN_FEATURES[planType];
+      subscription.isTrialSubscription = false;
+      subscription.trialStartDate = null;
+      subscription.trialEndDate = null;
     }
 
     await subscription.save();
 
-    // Update user record
-    await User.findByIdAndUpdate(userId, {
-      subscriptionPlan: planType,
-      subscriptionStatus: 'active'
-    });
+    console.log('Subscription updated successfully for workspace:', workspaceId);
 
-    console.log('Subscription updated successfully for user:', userId);
-    
   } catch (error) {
     console.error('Error updating subscription:', error);
     throw error;

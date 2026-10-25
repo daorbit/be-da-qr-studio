@@ -6,6 +6,11 @@ const paymentSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    required: true
+  },
   orderId: {
     type: String,
     required: true,
@@ -64,7 +69,7 @@ const paymentSchema = new mongoose.Schema({
 });
 
 // Index for efficient queries
-paymentSchema.index({ userId: 1, status: 1 });
+paymentSchema.index({ workspaceId: 1, status: 1 });
 paymentSchema.index({ orderId: 1 });
 paymentSchema.index({ createdAt: -1 });
 

@@ -2,6 +2,7 @@ import QRCode from '../models/QRCode.js';
 import Scan from '../models/Scan.js';
 import { UAParser } from 'ua-parser-js';
 import geoip from 'geoip-lite';
+import { belongsToWorkspace } from '../middleware/workspace.js';
 
 // @desc    Create new QR code
 // @route   POST /api/qrcodes
@@ -11,6 +12,7 @@ export const createQRCode = async (req, res) => {
     const { type, content, name, template, styling, previewImage, password, expirationDate, scanLimit } = req.body;
 
     const qrCode = await QRCode.create({
+      workspace: req.workspace._id,
       user: req.user._id,
       type,
       content,
@@ -41,8 +43,7 @@ export const getUserQRCodes = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100); // cap limit to 100
     const search = (req.query.search || '').toString().trim();
 
-    // Build query: user + optional search on name or content
-    const query = { user: req.user._id };
+    const query = { workspace: req.workspace._id };
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -76,15 +77,15 @@ export const getUserQRCodes = async (req, res) => {
 // @access  Private
 export const getQRCode = async (req, res) => {
   try {
-    const qrCode = await QRCode.findById(req.params.id).populate('user', 'whiteLabel');
+    const qrCode = await QRCode.findById(req.params.id).populate('workspace', 'whiteLabel');
 
     if (!qrCode) {
       return res.status(404).json({ success: false, message: 'QR code not found' });
     }
 
-    // Add whiteLabel from user to the response
     const qrCodeResponse = qrCode.toObject();
-    qrCodeResponse.whiteLabel = qrCode.user?.whiteLabel || null;
+    qrCodeResponse.whiteLabel = qrCode.workspace?.whiteLabel || null;
+    qrCodeResponse.workspace = qrCode.workspace?._id;
 
     res.json({
       success: true,
@@ -102,16 +103,12 @@ export const updateQRCode = async (req, res) => {
   try {
     let qrCode = await QRCode.findById(req.params.id);
 
-    if (!qrCode) {
+    if (!belongsToWorkspace(qrCode, req)) {
       return res.status(404).json({ success: false, message: 'QR code not found' });
     }
 
-    // Make sure user owns this QR code
-    if (qrCode.user.toString() !== req.user._id.toString()) {
-      return res.status(401).json({ success: false, message: 'Not authorized' });
-    }
-
-    qrCode = await QRCode.findByIdAndUpdate(req.params.id, req.body, {
+    const { workspace, user, scanCount, ...updates } = req.body;
+    qrCode = await QRCode.findByIdAndUpdate(req.params.id, updates, {
       new: true,
       runValidators: true,
     });
@@ -134,15 +131,11 @@ export const deleteQRCode = async (req, res) => {
   try {
     const qrCode = await QRCode.findById(req.params.id);
 
-    if (!qrCode) {
+    if (!belongsToWorkspace(qrCode, req)) {
       return res.status(404).json({ success: false, message: 'QR code not found' });
     }
 
-    // Make sure user owns this QR code
-    if (qrCode.user.toString() !== req.user._id.toString()) {
-      return res.status(401).json({ success: false, message: 'Not authorized' });
-    }
-
+    await Scan.deleteMany({ qrCode: qrCode._id });
     await qrCode.deleteOne();
 
     res.json({
@@ -244,7 +237,7 @@ export const incrementScan = async (req, res) => {
 // @access  Private
 export const getStats = async (req, res) => {
   try {
-    const statsQuery = { user: req.user._id };
+    const statsQuery = { workspace: req.workspace._id };
     
     // Get total count
     const total = await QRCode.countDocuments(statsQuery);

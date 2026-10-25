@@ -107,11 +107,11 @@ const sendOTPEmail = async (email, otp, purpose = 'verification') => {
  */
 const sendPasswordResetEmail = async (email, resetUrl, userName = '') => {
   const htmlContent = accountNotificationTemplate(
-    userName || 'User',
     'Reset Your Password',
-    `We received a request to reset your password for your QR Studio account. Click the button below to create a new secure password. This link will expire in 30 minutes for security.`,
-    { url: resetUrl, text: 'Reset My Password' },
-    'warning'
+    `Hi ${userName || 'there'}, we received a request to reset your password for your QR Studio account. Click the button below to create a new secure password. This link will expire in 30 minutes for security.`,
+    'warning',
+    resetUrl,
+    'Reset My Password'
   );
 
   return sendMail(email, "QR Studio - Password Reset Request", htmlContent);
@@ -202,7 +202,21 @@ const sendAccountNotification = async (email, userName, title, message, actionBu
   return sendMail(
     email,
     `QR Studio - ${title}`,
-    accountNotificationTemplate(userName, title, message, actionButton, type)
+    accountNotificationTemplate(title, `Hi ${userName || 'there'}, ${message}`, type, actionButton?.url, actionButton?.text)
+  );
+};
+
+const sendWorkspaceInviteEmail = async (email, { inviterName, workspaceName, role, acceptUrl }) => {
+  return sendMail(
+    email,
+    `${inviterName} invited you to ${workspaceName} on QR Studio`,
+    accountNotificationTemplate(
+      `Join ${workspaceName}`,
+      `${inviterName} invited you to the ${workspaceName} workspace on QR Studio as ${role === 'admin' ? 'an admin' : `a ${role}`}. The invitation expires in 7 days.`,
+      'info',
+      acceptUrl,
+      'Accept invitation'
+    )
   );
 };
 
@@ -230,5 +244,6 @@ export {
   sendVerificationOTP,
   sendWelcomeEmail,
   sendAccountNotification,
+  sendWorkspaceInviteEmail,
   cleanupExpiredOTPs
 };

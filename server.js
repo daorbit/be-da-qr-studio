@@ -11,6 +11,7 @@ import redirectRoutes from "./routes/redirects.js";
 import adminRoutes from "./routes/admin.js";
 import paymentRoutes from "./routes/payments.js";
 import webhookRoutes from "./routes/webhooks.js";
+import workspaceRoutes from "./routes/workspaces.js";
 import { connectDB } from "./config/db.js";
 import { scheduleCleanup } from "./utils/cleanupTasks.js";
 
@@ -39,8 +40,8 @@ app.use(
       "https://id-preview--9d155ac2-83d3-4dea-ba6d-bd4dadc5df2f.lovable.app",
     ],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Workspace-Id"],
   }),
 );
 // Increase payload size limit to handle base64 encoded images (20MB limit)
@@ -49,6 +50,7 @@ app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/qrcodes", qrCodeRoutes);
 app.use("/api/scans", scanRoutes);
 app.use("/api/contacts", contactRoutes);

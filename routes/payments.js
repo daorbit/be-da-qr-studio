@@ -1,5 +1,6 @@
 import express from 'express';
 import { protect } from '../middleware/auth.js';
+import { withWorkspace, requireRole, CAN_MANAGE } from '../middleware/workspace.js';
 import {
   getPlans,
   createOrder,
@@ -13,16 +14,17 @@ import {
 
 const router = express.Router();
 
-// Get available plans (public route)
+const member = [protect, withWorkspace];
+const billing = [protect, withWorkspace, requireRole(...CAN_MANAGE)];
+
 router.get('/plans', getPlans);
 
-// Protected routes
-router.post('/create-order', protect, createOrder);
-router.post('/verify', protect, verifyPayment);
-router.get('/subscription', protect, getSubscription);
-router.get('/history', protect, getPaymentHistory);
-router.post('/cancel', protect, cancelSubscription);
-router.post('/refresh', protect, refreshSubscription);
-router.get('/invoice/:paymentId', protect, downloadInvoice);
+router.post('/create-order', ...billing, createOrder);
+router.post('/verify', ...billing, verifyPayment);
+router.get('/subscription', ...member, getSubscription);
+router.get('/history', ...billing, getPaymentHistory);
+router.post('/cancel', ...billing, cancelSubscription);
+router.post('/refresh', ...member, refreshSubscription);
+router.get('/invoice/:paymentId', ...billing, downloadInvoice);
 
 export default router;

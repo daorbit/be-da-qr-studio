@@ -1,5 +1,6 @@
 import Scan from '../models/Scan.js';
 import QRCode from '../models/QRCode.js';
+import { belongsToWorkspace } from '../middleware/workspace.js';
 
 // @desc    Get all scans for a QR code
 // @route   GET /api/qrcodes/:id/scans
@@ -11,10 +12,8 @@ export const getQRCodeScans = async (req, res) => {
     if (!qrCode) {
       return res.status(404).json({ success: false, message: 'QR code not found' });
     }
-
-    // Make sure user owns this QR code
-    if (qrCode.user.toString() !== req.user._id.toString()) {
-      return res.status(401).json({ success: false, message: 'Not authorized' });
+    if (!belongsToWorkspace(qrCode, req)) {
+      return res.status(404).json({ success: false, message: 'QR code not found' });
     }
 
     const scans = await Scan.find({ qrCode: req.params.id })
@@ -37,7 +36,7 @@ export const getQRCodeScans = async (req, res) => {
 export const getUserAnalytics = async (req, res) => {
   try {
     // Get user's QR codes
-    const qrCodes = await QRCode.find({ user: req.user._id }).select('_id name');
+    const qrCodes = await QRCode.find({ workspace: req.workspace._id }).select('_id name');
     const qrCodeIds = qrCodes.map(qr => qr._id);
 
     if (qrCodeIds.length === 0) {
@@ -131,10 +130,8 @@ export const getQRCodeAnalytics = async (req, res) => {
     if (!qrCode) {
       return res.status(404).json({ success: false, message: 'QR code not found' });
     }
-
-    // Make sure user owns this QR code
-    if (qrCode.user.toString() !== req.user._id.toString()) {
-      return res.status(401).json({ success: false, message: 'Not authorized' });
+    if (!belongsToWorkspace(qrCode, req)) {
+      return res.status(404).json({ success: false, message: 'QR code not found' });
     }
 
     const scans = await Scan.find({ qrCode: req.params.id });
@@ -196,7 +193,7 @@ export const getQRCodeAnalytics = async (req, res) => {
 export const getUserScans = async (req, res) => {
   try {
     // Get all QR codes owned by user
-    const qrCodes = await QRCode.find({ user: req.user._id }).select('_id');
+    const qrCodes = await QRCode.find({ workspace: req.workspace._id }).select('_id');
     const qrCodeIds = qrCodes.map(qr => qr._id);
 
     // Get all scans for those QR codes

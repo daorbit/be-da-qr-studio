@@ -2,6 +2,11 @@ import mongoose from 'mongoose';
 
 const qrCodeSchema = new mongoose.Schema(
   {
+    workspace: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      ref: 'Workspace',
+    },
     user: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
@@ -65,7 +70,7 @@ const qrCodeSchema = new mongoose.Schema(
   }
 );
   // Index for faster queries
-qrCodeSchema.index({ user: 1, createdAt: -1 });
+qrCodeSchema.index({ workspace: 1, createdAt: -1 });
 
 const QRCode = mongoose.model('QRCode', qrCodeSchema);
 

@@ -15,29 +15,29 @@ import {
 import { checkUserLimits } from '../controllers/limitsController.js';
 import { protect } from '../middleware/auth.js';
 import { checkSubscriptionLimits } from '../middleware/subscription.js';
+import { withWorkspace, requireRole, CAN_EDIT } from '../middleware/workspace.js';
 
 const router = express.Router();
 
-// Stats endpoint (must be before /:id routes)
-router.get('/stats', protect, getStats);
+const member = [protect, withWorkspace];
+const editor = [protect, withWorkspace, requireRole(...CAN_EDIT)];
 
-// Test endpoint to check limits
-router.get('/limits', protect, checkUserLimits);
+router.get('/stats', ...member, getStats);
+
+router.get('/limits', ...member, checkUserLimits);
 
 router.route('/')
-  .get(protect, getUserQRCodes)
-  .post(protect, checkSubscriptionLimits, createQRCode);
+  .get(...member, getUserQRCodes)
+  .post(...editor, checkSubscriptionLimits, createQRCode);
 
 router.route('/:id')
-  .get(getQRCode)  // Make public so scan redirect can fetch QR data
-  .put(protect, updateQRCode)
-  .delete(protect, deleteQRCode);
+  .get(getQRCode)
+  .put(...editor, updateQRCode)
+  .delete(...editor, deleteQRCode);
 
-// Scan tracking (public endpoint)
 router.post('/:id/scan', incrementScan);
 
-// Analytics endpoints (protected)
-router.get('/:id/scans', protect, getQRCodeScans);
-router.get('/:id/analytics', protect, getQRCodeAnalytics);
+router.get('/:id/scans', ...member, getQRCodeScans);
+router.get('/:id/analytics', ...member, getQRCodeAnalytics);
 
 export default router;

@@ -1,0 +1,16 @@
+export const serializeUser = (user) => ({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  isAdmin: user.isAdmin,
+  theme: user.theme,
+  mobile: user.mobile,
+  country: user.country,
+  city: user.city,
+  profilePicture: user.profilePicture,
+  language: user.language,
+  timezone: user.timezone,
+  timeFormat: user.timeFormat,
+  hasPassword: user.password === undefined ? undefined : Boolean(user.password),
+  createdAt: user.createdAt,
+});

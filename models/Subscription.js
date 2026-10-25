@@ -1,9 +1,9 @@
 import mongoose from 'mongoose';
 
 const subscriptionSchema = new mongoose.Schema({
-  userId: {
+  workspaceId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Workspace',
     required: true,
     unique: true
   },
@@ -45,6 +45,10 @@ const subscriptionSchema = new mongoose.Schema({
     maxScansPerQR: {
       type: Number,
       default: 100 // Free plan limit
+    },
+    maxMembers: {
+      type: Number,
+      default: 1 // Free plan limit
     },
     analytics: {
       type: Boolean,
@@ -121,7 +125,6 @@ subscriptionSchema.methods.isExpired = function() {
 };
 
 // Index for efficient queries
-subscriptionSchema.index({ userId: 1 });
 subscriptionSchema.index({ status: 1, endDate: 1 });
 subscriptionSchema.index({ isTrialSubscription: 1, trialEndDate: 1 });
 

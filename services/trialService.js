@@ -1,18 +1,17 @@
 import Subscription from '../models/Subscription.js';
+import { DEFAULT_PLAN_FEATURES } from '../config/planFeatures.js';
 
 const TRIAL_MONTHS = 3;
 
-/**
- * Give a new user the pro-level trial subscription and save the trial fields on the user
- * @param {object} user - Mongoose user document
- */
-export const startTrialForUser = async (user) => {
+export const startTrialForWorkspace = async (workspace, user) => {
+  if (user.hasUsedTrial) return false;
+
   const trialStartDate = new Date();
   const trialEndDate = new Date();
   trialEndDate.setMonth(trialEndDate.getMonth() + TRIAL_MONTHS);
 
   await Subscription.create({
-    userId: user._id,
+    workspaceId: workspace._id,
     planType: 'trial',
     status: 'active',
     isTrialSubscription: true,
@@ -20,24 +19,10 @@ export const startTrialForUser = async (user) => {
     trialEndDate,
     startDate: trialStartDate,
     endDate: trialEndDate,
-    features: {
-      maxQRCodes: -1,
-      maxScansPerQR: -1,
-      analytics: true,
-      advancedAnalytics: true,
-      whiteLabel: true,
-      removeWatermark: true,
-      passwordProtection: true,
-      expirationDate: true,
-      customScanLimit: true
-    }
+    features: DEFAULT_PLAN_FEATURES.trial,
   });
 
-  user.trialStartDate = trialStartDate;
-  user.trialEndDate = trialEndDate;
   user.hasUsedTrial = true;
-  user.isOnTrial = true;
-  user.subscriptionPlan = 'trial';
-  user.subscriptionStatus = 'active';
   await user.save();
+  return true;
 };

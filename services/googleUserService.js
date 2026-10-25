@@ -1,5 +1,4 @@
 import User from '../models/User.js';
-import { startTrialForUser } from './trialService.js';
 
 /**
  * Find the user for a verified Google profile, linking or creating the account as needed
@@ -19,8 +18,6 @@ export const resolveGoogleUser = async (profile) => {
       isVerified: true,
       isEmailVerified: true,
     });
-
-    await startTrialForUser(user);
 
     return { user, created: true };
   }

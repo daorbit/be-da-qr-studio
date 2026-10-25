@@ -9,11 +9,11 @@ import {
 } from '../utils/googleOAuth.js';
 import { resolveGoogleUser } from '../services/googleUserService.js';
 import { generateToken } from '../utils/jwt.js';
+import { frontendBase } from '../utils/frontendUrl.js';
 
 const STATE_TTL = '10m';
 const STATE_KIND = 'google-login';
 
-const frontendBase = () => (process.env.FRONTEND_URL || 'https://qrstudio.daorbit.in').trim().replace(/\/+$/, '');
 
 const signInUrl = (status, extra = {}) => {
   const params = new URLSearchParams({ googleLogin: status, ...extra });
@@ -80,6 +80,22 @@ export const googleLoginCallback = async (req, res) => {
     console.error('[google] login failed:', error.message);
     return res.redirect(signInUrl('error', { reason: 'login_failed' }));
   }
+};
+
+export const googleCredentialLogin = async (req, res) => {
+  const { clientId } = googleLoginConfig();
+  if (!clientId) return res.status(503).json({ message: 'Google sign-in is not configured yet.' });
+
+  const credential = String(req.body?.credential || '');
+  if (!credential) return res.status(400).json({ message: 'Missing Google credential.' });
+
+  const profile = await verifyGoogleIdToken(credential, clientId);
+  if (!profile) return res.status(401).json({ message: 'Google did not share a verified email address.' });
+
+  const { user, created } = await resolveGoogleUser(profile);
+  if (user.blocked) return res.status(403).json({ message: 'Account is blocked, contact support.' });
+
+  res.json({ token: generateToken(user._id), created });
 };
 
 // @desc    Report whether Google sign-in is configured
