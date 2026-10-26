@@ -343,7 +343,7 @@ const passwordResetOTPTemplate = (email, otp) => {
               
               <p class="help-text">
                 If you did not make this request, your account is still secure. No changes have been made.<br><br>
-                Need help? <a href="https://qr-craft-studio.vercel.app/contact">Contact our support team</a>
+                Need help? <a href="mailto:winning11.in@gmail.com">Contact our support team</a>
               </p>
             </td>
           </tr>
@@ -358,7 +358,7 @@ const passwordResetOTPTemplate = (email, otp) => {
               <div class="footer-links">
                 <a href="https://qr-craft-studio.vercel.app/privacy" class="footer-link">Privacy Policy</a>
                 <a href="https://qr-craft-studio.vercel.app/terms" class="footer-link">Terms of Service</a>
-                <a href="https://qr-craft-studio.vercel.app/contact" class="footer-link">Contact Us</a>
+                <a href="mailto:winning11.in@gmail.com" class="footer-link">Contact Us</a>
               </div>
               
               <p class="copyright">
@@ -656,7 +656,7 @@ const emailVerificationTemplate = (email, otp) => {
               
               <p class="help-text">
                 Didn't sign up for QR Studio? You can safely ignore this email.<br><br>
-                Need help? <a href="https://qr-craft-studio.vercel.app/contact">Contact our support team</a>
+                Need help? <a href="mailto:winning11.in@gmail.com">Contact our support team</a>
               </p>
             </td>
           </tr>
@@ -671,7 +671,7 @@ const emailVerificationTemplate = (email, otp) => {
               <div class="footer-links">
                 <a href="https://qr-craft-studio.vercel.app/privacy" class="footer-link">Privacy Policy</a>
                 <a href="https://qr-craft-studio.vercel.app/terms" class="footer-link">Terms of Service</a>
-                <a href="https://qr-craft-studio.vercel.app/contact" class="footer-link">Contact Us</a>
+                <a href="mailto:winning11.in@gmail.com" class="footer-link">Contact Us</a>
               </div>
               
               <p class="copyright">
@@ -1046,7 +1046,7 @@ const welcomeEmailTemplate = (userName, email) => {
               <div class="divider"></div>
               
               <p class="help-text">
-                Need help getting started? <a href="https://qr-craft-studio.vercel.app/contact">Contact our support team</a><br>
+                Need help getting started? <a href="mailto:winning11.in@gmail.com">Contact our support team</a><br>
                 or check out our <a href="https://qr-craft-studio.vercel.app/help">getting started guide</a>
               </p>
             </td>
@@ -1062,7 +1062,7 @@ const welcomeEmailTemplate = (userName, email) => {
               <div class="footer-links">
                 <a href="https://qr-craft-studio.vercel.app/privacy" class="footer-link">Privacy Policy</a>
                 <a href="https://qr-craft-studio.vercel.app/terms" class="footer-link">Terms of Service</a>
-                <a href="https://qr-craft-studio.vercel.app/contact" class="footer-link">Contact Us</a>
+                <a href="mailto:winning11.in@gmail.com" class="footer-link">Contact Us</a>
               </div>
               
               <p class="copyright">
@@ -1321,7 +1321,7 @@ const accountNotificationTemplate = (title, message, type = 'info', actionUrl = 
               <div class="divider"></div>
               
               <p class="help-text">
-                Questions about this notification? <a href="https://qr-craft-studio.vercel.app/contact">Contact our support team</a><br>
+                Questions about this notification? <a href="mailto:winning11.in@gmail.com">Contact our support team</a><br>
                 or visit our <a href="https://qr-craft-studio.vercel.app/help">help center</a>
               </p>
             </td>
@@ -1337,7 +1337,7 @@ const accountNotificationTemplate = (title, message, type = 'info', actionUrl = 
               <div class="footer-links">
                 <a href="https://qr-craft-studio.vercel.app/privacy" class="footer-link">Privacy Policy</a>
                 <a href="https://qr-craft-studio.vercel.app/terms" class="footer-link">Terms of Service</a>
-                <a href="https://qr-craft-studio.vercel.app/contact" class="footer-link">Contact Us</a>
+                <a href="mailto:winning11.in@gmail.com" class="footer-link">Contact Us</a>
               </div>
               
               <p class="copyright">
